@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">LilycoApprove</string>
+    <string name="a11y_service_desc">Lilyco 自动点按：读取屏幕节点并代点 Approve / Reject，全程离线</string>
+</resources>
