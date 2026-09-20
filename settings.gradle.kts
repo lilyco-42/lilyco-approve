@@ -31,3 +31,4 @@ plugins {
 
 rootProject.name = "LilycoApprove"
 include(":app")
+include(":aichat")

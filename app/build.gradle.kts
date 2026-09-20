@@ -9,7 +9,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "com.example.lilycoapprove"
-        minSdk = 26
+        minSdk = 30
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -35,6 +35,9 @@ android {
     packaging {
       resources {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
+      }
+      jniLibs {
+        useLegacyPackaging = true
       }
     }
 }
@@ -84,4 +87,7 @@ dependencies {
 
   // Shizuku：免 root 拿 shell 级授权（静默装包、写设置、跨包拉起）
   implementation("dev.rikka.shizuku:api:13.1.5")
+
+  // 端侧推理：llama.cpp JNI（免 Termux，装机即聊）
+  implementation(project(":aichat"))
 }

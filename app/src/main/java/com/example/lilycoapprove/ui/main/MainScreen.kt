@@ -47,14 +47,22 @@ fun MainScreen(
 
 @Composable
 internal fun MainScreen(data: List<String>, modifier: Modifier = Modifier) {
+  var showSettings by remember { mutableStateOf(false) }
   Column(modifier) {
-    data.forEach { Greeting(it) }
-    Spacer(Modifier.height(16.dp))
-    PermissionSection()
-    Spacer(Modifier.height(16.dp))
-    ModelSection()
-    Spacer(Modifier.height(16.dp))
+    Text("小莉 · 本机 AI", style = androidx.compose.material3.MaterialTheme.typography.headlineSmall)
+    Text("断网能用，聊天不出手机", style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
+    Spacer(Modifier.height(12.dp))
     ChatSection()
+    Spacer(Modifier.height(12.dp))
+    Button(onClick = { showSettings = !showSettings }) {
+      Text(if (showSettings) "收起设置" else "设置（授权 / 模型）")
+    }
+    if (showSettings) {
+      Spacer(Modifier.height(8.dp))
+      PermissionSection()
+      Spacer(Modifier.height(16.dp))
+      ModelSection()
+    }
   }
 }
 

@@ -1,0 +1,71 @@
+name: Android CI
+
+on:
+  push:
+    branches-ignore: [master]
+    paths:
+      - "app/**"
+      - "aichat/**"
+      - "gradle/**"
+      - "settings.gradle.kts"
+      - ".github/workflows/android-ci.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "aichat/**"
+      - "gradle/**"
+      - "settings.gradle.kts"
+      - ".github/workflows/android-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Android debug APK (cloud build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone llama.cpp (JNI bridge source, b11045)
+        run: git clone --depth 1 --branch b11045 https://github.com/ggml-org/llama.cpp ../llama.cpp
+
+      - name: Fetch bundled model (Qwen3-0.6B-Q4 from v0.2.0 assets)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p app/src/main/assets/models
+          gh release download v0.2.0 -R ${{ github.repository }} -p 'Qwen3-0.6B-Q4_K_M.gguf' -D app/src/main/assets/models
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # `tools` was removed from current command-line SDK repositories; the
+      # action's historical default makes CI fail before Gradle starts.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK 36 + NDK + CMake
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "cmake;4.1.2" "ndk;30.0.15729638"
+
+      - name: Build debug APK + unit tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:testDebugUnitTest
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lilyco-approve-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

@@ -30,10 +30,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.arm.aichat.AiChat
+import com.arm.aichat.InferenceEngine
+import com.example.lilycoapprove.ModelSeed
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -41,12 +46,15 @@ import org.json.JSONObject
 
 data class ChatMsg(val role: String, val text: String)
 
-/** 手机端对话（ChatGPT 范式：气泡 + 左右分区 + 自动滚底，直连本机 127.0.0.1:8080）。 */
+/** 手机端对话（ChatGPT 范式：气泡 + 左右分区 + 自动滚底，端侧 JNI 优先、HTTP 备用）。 */
 @Composable
 internal fun ChatSection() {
-  var history by remember { mutableStateOf(listOf(ChatMsg("assistant", "本机模型已就绪，你说。"))) }
+  val ctx = LocalContext.current
+  var history by remember { mutableStateOf(listOf(ChatMsg("assistant", "你好呀，我是小莉，住在这部手机里。点下面试试，不花流量。"))) }
   var input by remember { mutableStateOf("") }
   var busy by remember { mutableStateOf(false) }
+  var engineState by remember { mutableStateOf("端侧引擎：加载中…") }
+  var engine: InferenceEngine? by remember { mutableStateOf(null) }
   val listState = rememberLazyListState()
   val scope = rememberCoroutineScope()
 
@@ -54,25 +62,95 @@ internal fun ChatSection() {
     if (history.isNotEmpty()) listState.animateScrollToItem(history.size - 1)
   }
 
-  fun send() {
-    val q = input.trim()
-    if (q.isEmpty() || busy) return
-    input = ""
-    history = history + ChatMsg("user", q) + ChatMsg("assistant", "…")
-    busy = true
-    scope.launch(Dispatchers.IO) {
-      val reply = postChat(history.dropLast(1).filter { it.text != "…" })
-      withContext(Dispatchers.Main) {
-        history = history.dropLast(1) + ChatMsg("assistant", reply)
-        busy = false
+  // 首启：铺模型 → 载入 JNI 引擎（后台全程）
+  LaunchedEffect(Unit) {
+    withContext(Dispatchers.IO) {
+      try {
+        withContext(Dispatchers.Main) { engineState = "端侧引擎：铺模型…" }
+        val file =
+          if (ModelSeed.isReady(ctx)) ModelSeed.modelFile(ctx)
+          else {
+            var last = -1
+            ModelSeed.ensure(ctx) { p ->
+              if (p != last) {
+                last = p
+                (ctx as? androidx.activity.ComponentActivity)?.runOnUiThread {
+                  engineState = "端侧引擎：铺模型 $p%"
+                }
+              }
+            }
+          }
+        withContext(Dispatchers.Main) { engineState = "端侧引擎：加载权重…" }
+        val eng = AiChat.getInferenceEngine(ctx)
+        eng.loadModel(file.absolutePath)
+        withContext(Dispatchers.Main) {
+          engine = eng
+          engineState = "端侧引擎：就绪（免 Termux）"
+          history = listOf(ChatMsg("assistant", "我准备好啦，直接说事就行。"))
+        }
+      } catch (e: Exception) {
+        withContext(Dispatchers.Main) {
+          engineState = "端侧引擎失败，转 HTTP 备用"
+          history = listOf(ChatMsg("assistant", "端侧引擎未起（${e.message}），走 HTTP 备用。"))
+        }
       }
       Unit
     }
   }
 
+  fun sendText(raw: String) {
+    val q = raw.trim()
+    if (q.isEmpty() || busy) return
+    input = ""
+    history = history + ChatMsg("user", q) + ChatMsg("assistant", "…")
+    busy = true
+    val eng = engine
+    scope.launch(Dispatchers.IO) {
+      if (eng != null) {
+        // 流式：token 到即上屏（Qwen3 关思考 + 兜底剥 think 块，小白只看答案）
+        val sb = StringBuilder()
+        var shown = ""
+        try {
+          eng.sendUserPrompt("$q/no_think", 128).collect { tok ->
+            sb.append(tok)
+            val cur = visibleText(sb.toString())
+            if (cur.length - shown.length >= 2 || cur.endsWith("\n")) {
+              shown = cur
+              val snapshot = shown
+              withContext(Dispatchers.Main) {
+                history = history.dropLast(1) + ChatMsg("assistant", snapshot)
+              }
+            }
+          }
+        } catch (e: Exception) {
+          sb.append("（生成中断）")
+        }
+        val final = stripThink(sb.toString()).trim().ifEmpty { "（空回复）" }
+        withContext(Dispatchers.Main) {
+          history = history.dropLast(1) + ChatMsg("assistant", final)
+          busy = false
+        }
+      } else {
+        val reply = postChat(history.dropLast(1).filter { it.text != "…" })
+        withContext(Dispatchers.Main) {
+          history = history.dropLast(1) + ChatMsg("assistant", reply)
+          busy = false
+        }
+      }
+      Unit
+    }
+  }
+
+  fun send() = sendText(input)
+
   Column(Modifier.fillMaxWidth()) {
     Text("对话（本机离线）", style = MaterialTheme.typography.titleMedium)
+    Text(engineState, style = MaterialTheme.typography.bodySmall)
     Spacer(Modifier.height(8.dp))
+    if (history.size <= 1 && !busy) {
+      SuggestionChips(onPick = { sendText(it) })
+      Spacer(Modifier.height(8.dp))
+    }
     LazyColumn(
       Modifier.heightIn(min = 200.dp, max = 420.dp).fillMaxWidth(),
       state = listState,
@@ -102,6 +180,16 @@ internal fun ChatSection() {
 }
 
 @Composable
+private fun SuggestionChips(onPick: (String) -> Unit) {
+  val tips = listOf("你是谁？", "讲个笑话", "帮我写个请假条")
+  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    tips.forEach { tip ->
+      androidx.compose.material3.AssistChip(onClick = { onPick(tip) }, label = { Text(tip) })
+    }
+  }
+}
+
+@Composable
 private fun ChatBubble(m: ChatMsg) {
   val mine = m.role == "user"
   Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
@@ -124,6 +212,19 @@ private fun ChatBubble(m: ChatMsg) {
     }
   }
 }
+
+/** 流式可见文：think 未闭合时只露“思考中”，闭合后整段剥掉。 */
+private fun visibleText(text: String): String {
+  val open = text.indexOf("<think>")
+  if (open >= 0 && !text.contains("</think>")) {
+    val head = text.substring(0, open).trim()
+    return (if (head.isNotEmpty()) head + "\n" else "") + "思考中…"
+  }
+  return stripThink(text)
+}
+
+private fun stripThink(text: String): String =
+  text.replace(Regex("(?s)<think>.*?</think>"), "").trim()
 
 private fun postChat(history: List<ChatMsg>): String {
   return try {
