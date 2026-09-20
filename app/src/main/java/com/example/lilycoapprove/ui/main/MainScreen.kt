@@ -108,12 +108,19 @@ internal fun ModelSection() {
   var modelState by remember { mutableStateOf("未检查") }
 
   fun refresh() {
-    modelState =
-      when {
-        !TermuxBridge.isTermuxInstalled(ctx) -> "未装 Termux（去 F-Droid 装）"
-        TermuxBridge.serverHealth() -> "模型服务在线（127.0.0.1:8080）"
-        else -> "Termux 已装，模型服务未起"
+    val hasTermux = TermuxBridge.isTermuxInstalled(ctx)
+    // 网络探测走后台线程（主线程联网会被系统掐掉）
+    Thread {
+      val online = TermuxBridge.serverHealth()
+      (ctx as? androidx.activity.ComponentActivity)?.runOnUiThread {
+        modelState =
+          when {
+            !hasTermux -> "未装 Termux（去 F-Droid 装）"
+            online -> "模型服务在线（127.0.0.1:8080）"
+            else -> "Termux 已装，模型服务未起"
+          }
       }
+    }.start()
   }
 
   Text("模型：$modelState")
