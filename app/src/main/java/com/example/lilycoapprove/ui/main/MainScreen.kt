@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavKey
+import com.example.lilycoapprove.TermuxBridge
 import com.example.lilycoapprove.data.DefaultDataRepository
 import com.example.lilycoapprove.theme.LilycoApproveTheme
 import rikka.shizuku.Shizuku
@@ -50,6 +51,8 @@ internal fun MainScreen(data: List<String>, modifier: Modifier = Modifier) {
     data.forEach { Greeting(it) }
     Spacer(Modifier.height(16.dp))
     PermissionSection()
+    Spacer(Modifier.height(16.dp))
+    ModelSection()
   }
 }
 
@@ -97,6 +100,36 @@ internal fun PermissionSection() {
   }
   Spacer(Modifier.height(8.dp))
   Button(onClick = { refresh() }) { Text("刷新状态") }
+}
+
+@Composable
+internal fun ModelSection() {
+  val ctx = LocalContext.current
+  var modelState by remember { mutableStateOf("未检查") }
+
+  fun refresh() {
+    modelState =
+      when {
+        !TermuxBridge.isTermuxInstalled(ctx) -> "未装 Termux（去 F-Droid 装）"
+        TermuxBridge.serverHealth() -> "模型服务在线（127.0.0.1:8080）"
+        else -> "Termux 已装，模型服务未起"
+      }
+  }
+
+  Text("模型：$modelState")
+  Button(
+    onClick = {
+      if (!TermuxBridge.runOnekey(ctx, vision = false)) {
+        modelState = "Termux 未装，发令失败"
+      } else {
+        modelState = "已发令，后台下载+启动中…"
+      }
+    }
+  ) {
+    Text("一键启动模型")
+  }
+  Spacer(Modifier.height(8.dp))
+  Button(onClick = { refresh() }) { Text("检查模型状态") }
 }
 
 @Composable
