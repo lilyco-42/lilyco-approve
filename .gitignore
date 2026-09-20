@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+# llama.cpp JNI 源（CI 现场 clone，体积大不进仓）
+/llama.cpp/

@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Clone llama.cpp (JNI bridge source, b11045)
-        run: git clone --depth 1 --branch b11045 https://github.com/ggml-org/llama.cpp ../llama.cpp
+        run: git clone --depth 1 --branch b11045 https://github.com/ggml-org/llama.cpp ${{ github.workspace }}/llama.cpp
 
       - name: Fetch bundled model (Qwen3-0.6B-Q4 from v0.2.0 assets)
         env:
