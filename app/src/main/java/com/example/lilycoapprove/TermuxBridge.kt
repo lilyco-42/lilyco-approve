@@ -21,9 +21,11 @@ object TermuxBridge {
       false
     }
 
-  /** 发令：在 Termux 后台跑脚本。返回 false = 没发出去（Termux 未装）。 */
+  /**
+   * 发令：在 Termux 后台跑脚本。true=intent 发出（Termux 是否真执行看 done 文件/服务状态），
+   * false=系统直接拒收（通常是 Termux 未装）。
+   */
   fun runOnekey(ctx: Context, vision: Boolean): Boolean {
-    if (!isTermuxInstalled(ctx)) return false
     // 脚本位：用户按 docs/ONEKEY-XIAOBAI.md 已放入 Termux 家目录
     val script = "/data/data/$TERMUX_PKG/files/home/$ONKEY_SCRIPT"
     val args = if (vision) arrayOf(script, "--vision") else arrayOf(script)
@@ -35,7 +37,7 @@ object TermuxBridge {
         putExtra(EXTRA_BG, true)
       }
     return try {
-      ctx.startService(intent)
+      ctx.startForegroundService(intent) ?: return false
       true
     } catch (_: Exception) {
       false
