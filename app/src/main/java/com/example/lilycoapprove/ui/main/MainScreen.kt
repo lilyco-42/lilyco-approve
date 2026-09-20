@@ -53,6 +53,8 @@ internal fun MainScreen(data: List<String>, modifier: Modifier = Modifier) {
     PermissionSection()
     Spacer(Modifier.height(16.dp))
     ModelSection()
+    Spacer(Modifier.height(16.dp))
+    ChatSection()
   }
 }
 

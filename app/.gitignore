@@ -1,1 +1,3 @@
 /build
+# 模型走 release/OSS 分发，不进 git（400MB+）
+/src/main/assets/models/
