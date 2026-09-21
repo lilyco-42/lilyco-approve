@@ -49,7 +49,7 @@ fun MainScreen(
 internal fun MainScreen(data: List<String>, modifier: Modifier = Modifier) {
   var showSettings by remember { mutableStateOf(false) }
   Column(modifier) {
-    Text("小莉 · 本机 AI", style = androidx.compose.material3.MaterialTheme.typography.headlineSmall)
+    Text("lyco 璃可 · 本机 AI", style = androidx.compose.material3.MaterialTheme.typography.headlineSmall)
     Text("断网能用，聊天不出手机", style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
     Spacer(Modifier.height(12.dp))
     ChatSection()

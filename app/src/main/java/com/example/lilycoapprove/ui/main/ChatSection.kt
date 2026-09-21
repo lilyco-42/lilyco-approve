@@ -48,7 +48,7 @@ data class ChatMsg(val role: String, val text: String)
 
 /** router 脑的 system prompt（与训练一致：只吐命令）。 */
 private const val ROUTER_SYS =
-  "你的名字叫小莉，是住在这部手机里的本机AI助手。回答简短口语。" +
+  "你的名字叫lyco璃可，是住在这部手机里的本机AI助手。回答简短口语。" +
     "你是 lyco_agent 的命令路由器。把用户的日常意图翻译成一个本地 CLI 命令。" +
     "支持的域：hw(硬件)/gh(github)/ff(ffmpeg)/lb(行情持仓只读)/brush(shell 通用命令)。" +
     "只输出命令本身，不要解释；不支持的请求输出 (无需调用硬件命令)。"
@@ -66,7 +66,7 @@ private fun extractCommand(text: String): String? {
 @Composable
 internal fun ChatSection() {
   val ctx = LocalContext.current
-  var history by remember { mutableStateOf(listOf(ChatMsg("assistant", "你好呀，我是小莉，住在这部手机里。点下面试试，不花流量。"))) }
+  var history by remember { mutableStateOf(listOf(ChatMsg("assistant", "你好呀，我是lyco璃可，住在这部手机里。点下面试试，不花流量。"))) }
   var input by remember { mutableStateOf("") }
   var busy by remember { mutableStateOf(false) }
   var engineState by remember { mutableStateOf("端侧引擎：加载中…") }
@@ -353,7 +353,7 @@ private fun visibleText(text: String): String {
 private fun stripThink(text: String): String =
   text
     .replace(Regex("(?s)<think>.*?</think>"), "")
-    .replace("我叫小智", "我叫小莉")
+    .replace("我叫小智", "我叫lyco璃可")
     .trim()
 
 private fun postChat(history: List<ChatMsg>): String {
