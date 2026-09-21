@@ -287,9 +287,19 @@ internal fun ChatSection() {
     pendingCmd?.let { cmd ->
       // 通用化：先解析成结构化动作（无障碍直调），解析不出才走生活类关键词兜底
       val actions = remember(cmd) { cmd.lines().mapNotNull { parseOp(it) }.take(5) }
+      val userQ = history.lastOrNull { it.role == "user" }?.text.orEmpty()
+      val negated = hasNegation(userQ)
       val cmdText =
         if (actions.isNotEmpty()) actions.joinToString("\n") { "· " + describeOp(it) }
         else cmd
+      if (negated) {
+        Text(
+          "⚠ 检测到否定词，请逐字核对命令再批准",
+          color = Color.Red,
+          style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(4.dp))
+      }
       ApproveCard(
         cmd = cmdText,
         note = execNote,
@@ -380,6 +390,10 @@ private fun executeTask(ctx: android.content.Context, query: String, cmd: String
     else -> "已批准：$cmd（演示版只执行放歌/外卖/股价三类）"
   }
 }
+
+/** 否定词检测：命中则 Approve 卡标红，强制人工逐字核对（模型否定可靠性为零）。 */
+private fun hasNegation(q: String): Boolean =
+  listOf("不", "没", "别", "勿", "莫", "千万", "禁止", "拒绝", "不要").any { q.contains(it) }
 
 @Composable
 private fun ApproveCard(
