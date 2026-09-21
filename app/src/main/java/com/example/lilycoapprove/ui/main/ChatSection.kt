@@ -144,8 +144,8 @@ private fun screenOpTexts(): List<String> {
 
 /** router 脑的 system prompt（与训练一致：只吐命令）。 */
 private const val ROUTER_SYS =
-  "你的名字叫lyco璃可，是住在这部手机里的本机AI助手。回答简短口语。" +
-    "你是 lyco_agent 的命令路由器。把用户的日常意图翻译成一个本地 CLI 命令。" +
+  // 人设只放 UI 气泡与 strip 兜底：实测 sys 里加身份行会把路由带偏（kubectl→gh）
+  "你是 lyco_agent 的命令路由器。把用户的日常意图翻译成一个本地 CLI 命令。" +
     "支持的域：hw(硬件)/gh(github)/ff(ffmpeg)/lb(行情持仓只读)/brush(shell 通用命令)。" +
     "只输出命令本身，不要解释；不支持的请求输出 (无需调用硬件命令)。" +
     "能力表：kubectl get pods 看pod；brush docker ps 列运行中容器；" +
