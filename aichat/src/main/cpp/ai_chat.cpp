@@ -419,6 +419,9 @@ Java_com_arm_aichat_internal_InferenceEngineImpl_processUserPrompt(
     const bool has_chat_template = common_chat_templates_was_explicit(g_chat_templates.get());
     if (has_chat_template) {
         formatted_user_prompt = chat_add_and_format(ROLE_USER, user_prompt);
+        // Match training (enable_thinking=false): template would append an
+        // empty think block here; minja path has no kwargs switch, so do it.
+        formatted_user_prompt += "<think>\n\n</think>\n\n";
     }
     env->ReleaseStringUTFChars(juser_prompt, user_prompt);
 
