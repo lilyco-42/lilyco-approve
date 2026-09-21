@@ -147,7 +147,11 @@ private const val ROUTER_SYS =
   "你的名字叫lyco璃可，是住在这部手机里的本机AI助手。回答简短口语。" +
     "你是 lyco_agent 的命令路由器。把用户的日常意图翻译成一个本地 CLI 命令。" +
     "支持的域：hw(硬件)/gh(github)/ff(ffmpeg)/lb(行情持仓只读)/brush(shell 通用命令)。" +
-    "只输出命令本身，不要解释；不支持的请求输出 (无需调用硬件命令)。"
+    "只输出命令本身，不要解释；不支持的请求输出 (无需调用硬件命令)。" +
+    "能力表：kubectl get pods 看pod；brush docker ps 列运行中容器；" +
+    "ff convert <in> <out> [宽] [高] 转码。" +
+    "示例：用户<看看集群里有哪些pod在跑>输出<kubectl get pods>；" +
+    "用户<列出正在运行的docker容器>输出<brush docker ps>。"
 
 /** 看着像可执行命令的回复 → 弹出 Approve 条。 */
 private fun extractCommand(text: String): String? {
