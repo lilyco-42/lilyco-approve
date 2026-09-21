@@ -36,12 +36,10 @@ jobs:
       - name: Clone llama.cpp (JNI bridge source, b11045)
         run: git clone --depth 1 --branch b11045 https://github.com/ggml-org/llama.cpp ${{ github.workspace }}/llama.cpp
 
-      - name: Fetch bundled model (Qwen3-0.6B-Q4 from v0.2.0 assets)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fetch bundled model (router_v13 from OSS mirror)
         run: |
           mkdir -p app/src/main/assets/models
-          gh release download v0.2.0 -R ${{ github.repository }} -p 'Qwen3-0.6B-Q4_K_M.gguf' -D app/src/main/assets/models
+          curl -fL --retry 3 -o app/src/main/assets/models/router_v13-Q4_K_M.gguf https://dl.lain42.top/downloads/models/router_v13-Q4_K_M.gguf
 
       - uses: actions/setup-java@v4
         with:
