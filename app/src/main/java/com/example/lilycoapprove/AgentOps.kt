@@ -1,6 +1,7 @@
 package com.example.lilycoapprove
 
 import android.accessibilityservice.AccessibilityService
+import android.os.IBinder
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
@@ -104,21 +105,43 @@ object AgentOps {
     }
   }
 
-  /** Shizuku-shell（adb 等价：dump/xml、input、am，备用通道）。 */
-  fun runShell(cmd: String): String {
+  /** Shizuku-UserService（adb 等价：dump/xml、input、am，备用通道）。 */
+  fun runShell(ctx: android.content.Context, cmd: String): String {
     if (!rikka.shizuku.Shizuku.pingBinder()) return "Shizuku 未运行"
     if (rikka.shizuku.Shizuku.checkSelfPermission() !=
       android.content.pm.PackageManager.PERMISSION_GRANTED
     ) {
       return "Shizuku 未授权"
     }
+    val args =
+      rikka.shizuku.Shizuku.UserServiceArgs(
+        android.content.ComponentName(ctx, ShizukuExecService::class.java),
+      ).daemon(false)
+    var binder: IBinder? = null
+    val latch = java.util.concurrent.CountDownLatch(1)
+    val conn =
+      object : android.content.ServiceConnection {
+        override fun onServiceConnected(name: android.content.ComponentName?, service: IBinder?) {
+          binder = service
+          latch.countDown()
+        }
+
+        override fun onServiceDisconnected(name: android.content.ComponentName?) {
+          latch.countDown()
+        }
+      }
     return try {
-      val p = rikka.shizuku.Shizuku.newProcess(arrayOf("sh", "-c", cmd), null, null)
-      val out = p.inputStream.bufferedReader().readText()
-      val code = p.waitFor()
-      if (code == 0) out.ifBlank { "执行成功" } else "退出码 $code：$out"
+      rikka.shizuku.Shizuku.bindUserService(args, conn)
+      if (!latch.await(20, java.util.concurrent.TimeUnit.SECONDS)) return "Shizuku 服务连接超时"
+      val b = binder ?: return "Shizuku 服务未就绪"
+      IShizukuExec.Stub.asInterface(b).exec(cmd)
     } catch (e: Exception) {
       "shell 异常：${e.message}"
+    } finally {
+      try {
+        rikka.shizuku.Shizuku.unbindUserService(args, conn, true)
+      } catch (_: Exception) {
+      }
     }
   }
 
