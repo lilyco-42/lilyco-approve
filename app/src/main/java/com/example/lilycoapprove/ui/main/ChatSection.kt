@@ -46,6 +46,102 @@ import org.json.JSONObject
 
 data class ChatMsg(val role: String, val text: String)
 
+/** 通用动作（router 文本 → 结构化 → 无障碍直调；Shizuku-shell 通道见 v2 计划）。 */
+private sealed interface OpAction {
+  data class TapText(val text: String) : OpAction
+  data class Tap(val x: Float, val y: Float) : OpAction
+  data class Input(val text: String) : OpAction
+  data class OpenApp(val pkg: String, val label: String) : OpAction
+  data object Back : OpAction
+  data object ScrollDown : OpAction
+}
+
+private val OP_TAP = Regex("""(?i)^\s*tap\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)\s*$""")
+private val OP_TAP_TEXT = Regex("""(?i)^\s*(?:tap|click|点(?:击)?)\s*[“"']?(.+?)[""']?\s*$""")
+private val OP_INPUT = Regex("""(?i)^\s*(?:input|type|输入)\s+(.+)\s*$""")
+private val OP_OPEN = Regex("""(?i)^\s*(?:open|打开|启动)\s+([a-zA-Z][\w.]+)\s*$""")
+
+/** 一行输出 → 动作；看不懂返回 null（纯聊天，不弹 Approve）。 */
+private fun parseOp(line: String): OpAction? {
+  val t = line.trim()
+  if (t.isEmpty()) return null
+  OP_TAP.matchEntire(t)?.let { return OpAction.Tap(it.groupValues[1].toFloat(), it.groupValues[2].toFloat()) }
+  OP_INPUT.matchEntire(t)?.let { return OpAction.Input(it.groupValues[1]) }
+  OP_OPEN.matchEntire(t)?.let { return OpAction.OpenApp(it.groupValues[1], it.groupValues[1]) }
+  if (t.equals("back", true) || t == "返回") return OpAction.Back
+  if (t.equals("scroll", true) || t == "下滑" || t == "翻页") return OpAction.ScrollDown
+  if (!t.contains(" ") && !t.contains("\n") && t.length <= 12) return OpAction.TapText(t)
+  OP_TAP_TEXT.matchEntire(t)?.let { return OpAction.TapText(it.groupValues[1]) }
+  return null
+}
+
+private fun describeOp(a: OpAction): String =
+  when (a) {
+    is OpAction.TapText -> "点「${a.text}」"
+    is OpAction.Tap -> "点坐标 (${a.x}, ${a.y})"
+    is OpAction.Input -> "输入「${a.text}」"
+    is OpAction.OpenApp -> "打开 ${a.label}"
+    OpAction.Back -> "返回"
+    OpAction.ScrollDown -> "下滑翻页"
+  }
+
+/** 无障碍直调执行。 */
+private fun runOp(a: OpAction, ctx: android.content.Context): String {
+  val svc = com.example.lilycoapprove.ApproveAccessibilityService.instance
+    ?: return "无障碍服务未开启，先去设置打开"
+  return try {
+    val ok =
+      when (a) {
+        is OpAction.TapText -> com.example.lilycoapprove.ApproveAccessibilityService.clickText(a.text)
+        is OpAction.Tap -> com.example.lilycoapprove.ApproveAccessibilityService.tap(a.x, a.y)
+        is OpAction.Input -> {
+          val root = svc.rootInActiveWindow
+          val node = root?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
+          node?.performAction(
+            android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
+            android.os.Bundle().apply {
+              putCharSequence(
+                android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                a.text,
+              )
+            },
+          ) ?: false
+        }
+        is OpAction.OpenApp -> {
+          val intent = ctx.packageManager.getLaunchIntentForPackage(a.pkg)
+            ?: return "没装 ${a.label}，装上再批"
+          intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+          ctx.startActivity(intent)
+          true
+        }
+        OpAction.Back ->
+          svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        OpAction.ScrollDown -> {
+          val root = svc.rootInActiveWindow
+          root?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) ?: false
+        }
+      }
+    if (ok) "已执行：${describeOp(a)}" else "执行失败（节点不在当前屏？）：${describeOp(a)}"
+  } catch (e: Exception) {
+    "执行异常：${e.message}"
+  }
+}
+
+/** 当前屏可点文本（答题：喂给模型选，再点）。 */
+private fun screenOpTexts(): List<String> {
+  val root = com.example.lilycoapprove.ApproveAccessibilityService.instance?.rootInActiveWindow
+    ?: return emptyList()
+  val out = LinkedHashSet<String>()
+  fun walk(n: android.view.accessibility.AccessibilityNodeInfo?) {
+    if (n == null) return
+    val t = (n.text ?: n.contentDescription)?.toString()?.trim()
+    if (!t.isNullOrEmpty() && t.length <= 40) out.add(t)
+    for (i in 0 until n.childCount) walk(n.getChild(i))
+  }
+  walk(root)
+  return out.toList()
+}
+
 /** router 脑的 system prompt（与训练一致：只吐命令）。 */
 private const val ROUTER_SYS =
   "你的名字叫lyco璃可，是住在这部手机里的本机AI助手。回答简短口语。" +
@@ -186,9 +282,9 @@ internal fun ChatSection() {
     Spacer(Modifier.height(8.dp))
     pendingCmd?.let { cmd ->
       // 通用化：先解析成结构化动作（无障碍直调），解析不出才走生活类关键词兜底
-      val actions = remember(cmd) { cmd.lines().mapNotNull { AgentOps.parse(it) }.take(5) }
+      val actions = remember(cmd) { cmd.lines().mapNotNull { parseOp(it) }.take(5) }
       val cmdText =
-        if (actions.isNotEmpty()) actions.joinToString("\n") { "· " + AgentOps.describe(it) }
+        if (actions.isNotEmpty()) actions.joinToString("\n") { "· " + describeOp(it) }
         else cmd
       ApproveCard(
         cmd = cmdText,
@@ -197,7 +293,7 @@ internal fun ChatSection() {
           val q = history.lastOrNull { it.role == "user" }?.text.orEmpty()
           val done =
             if (actions.isNotEmpty()) {
-              actions.joinToString("\n") { a -> AgentOps.runA11y(a, ctx) }
+              actions.joinToString("\n") { a -> runOp(a, ctx) }
             } else {
               executeTask(ctx, q, cmd)
             }
@@ -251,7 +347,7 @@ private fun TaskChips(onPick: (String) -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       androidx.compose.material3.AssistChip(
         onClick = {
-          val texts = AgentOps.screenTexts()
+          val texts = screenOpTexts()
           onPick(
             if (texts.isEmpty()) "帮我看看这屏（无障碍没开的话先去设置打开）"
             else "这屏可点项：" + texts.take(30).joinToString("、") + "。请帮我答题/选一项",
