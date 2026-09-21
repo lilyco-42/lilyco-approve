@@ -184,12 +184,22 @@ internal fun ChatSection() {
     }
     Spacer(Modifier.height(8.dp))
     pendingCmd?.let { cmd ->
+      // 通用化：先解析成结构化动作（无障碍直调），解析不出才走生活类关键词兜底
+      val actions = remember(cmd) { cmd.lines().mapNotNull { AgentOps.parse(it) }.take(5) }
+      val cmdText =
+        if (actions.isNotEmpty()) actions.joinToString("\n") { "· " + AgentOps.describe(it) }
+        else cmd
       ApproveCard(
-        cmd = cmd,
+        cmd = cmdText,
         note = execNote,
         onApprove = {
           val q = history.lastOrNull { it.role == "user" }?.text.orEmpty()
-          val done = executeTask(ctx, q, cmd)
+          val done =
+            if (actions.isNotEmpty()) {
+              actions.joinToString("\n") { a -> AgentOps.runA11y(a, ctx) }
+            } else {
+              executeTask(ctx, q, cmd)
+            }
           execNote = done
           history = history + ChatMsg("assistant", done)
           pendingCmd = null
@@ -224,15 +234,30 @@ internal fun ChatSection() {
 
 @Composable
 private fun TaskChips(onPick: (String) -> Unit) {
+  val ctx = LocalContext.current
   val tasks =
     listOf(
       "打开网易云放一首歌" to "放首歌",
       "帮我点一份外卖" to "点外卖",
       "查一下特斯拉股价" to "查股价",
     )
-  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    tasks.forEach { (prompt, label) ->
-      androidx.compose.material3.AssistChip(onClick = { onPick(prompt) }, label = { Text(label) })
+  Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      tasks.forEach { (prompt, label) ->
+        androidx.compose.material3.AssistChip(onClick = { onPick(prompt) }, label = { Text(label) })
+      }
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      androidx.compose.material3.AssistChip(
+        onClick = {
+          val texts = AgentOps.screenTexts()
+          onPick(
+            if (texts.isEmpty()) "帮我看看这屏（无障碍没开的话先去设置打开）"
+            else "这屏可点项：" + texts.take(30).joinToString("、") + "。请帮我答题/选一项",
+          )
+        },
+        label = { Text("帮我答题") },
+      )
     }
   }
 }
