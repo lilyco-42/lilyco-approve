@@ -5,10 +5,10 @@ import java.io.File
 
 /** 首启铺模型：assets/models → filesDir/models（mmap 直读，一次即可）。 */
 object ModelSeed {
-  const val ASSET_PATH = "models/Qwen3-0.6B-Q4_K_M.gguf"
-  const val ASSET_SIZE = 396705472L
+  const val ASSET_PATH = "models/router_v13-Q4_K_M.gguf"
+  const val ASSET_SIZE = 484219648L
 
-  fun modelFile(ctx: Context): File = File(ctx.filesDir, "models/Qwen3-0.6B-Q4_K_M.gguf")
+  fun modelFile(ctx: Context): File = File(ctx.filesDir, "models/router_v13-Q4_K_M.gguf")
 
   fun isReady(ctx: Context): Boolean {
     val f = modelFile(ctx)

@@ -46,6 +46,21 @@ import org.json.JSONObject
 
 data class ChatMsg(val role: String, val text: String)
 
+/** router 脑的 system prompt（与训练一致：只吐命令）。 */
+private const val ROUTER_SYS =
+  "你是 lyco_agent 的命令路由器。把用户的日常意图翻译成一个本地 CLI 命令。" +
+    "支持的域：hw(硬件)/gh(github)/ff(ffmpeg)/lb(行情持仓只读)/brush(shell 通用命令)。" +
+    "只输出命令本身，不要解释；不支持的请求输出 (无需调用硬件命令)。"
+
+/** 看着像可执行命令的回复 → 弹出 Approve 条。 */
+private fun extractCommand(text: String): String? {
+  val line = text.lines().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: return null
+  if (line.startsWith("(无需调用硬件命令)")) return null
+  val head = line.split(Regex("\\s+")).firstOrNull() ?: return null
+  return if (head in setOf("gh", "brush", "hw", "ff", "adb", "am", "input", "monkey", "cargo", "git", "ssh")) line
+  else null
+}
+
 /** 手机端对话（ChatGPT 范式：气泡 + 左右分区 + 自动滚底，端侧 JNI 优先、HTTP 备用）。 */
 @Composable
 internal fun ChatSection() {
@@ -55,6 +70,8 @@ internal fun ChatSection() {
   var busy by remember { mutableStateOf(false) }
   var engineState by remember { mutableStateOf("端侧引擎：加载中…") }
   var engine: InferenceEngine? by remember { mutableStateOf(null) }
+  var pendingCmd by remember { mutableStateOf<String?>(null) }
+  var execNote by remember { mutableStateOf("") }
   val listState = rememberLazyListState()
   val scope = rememberCoroutineScope()
 
@@ -83,6 +100,10 @@ internal fun ChatSection() {
         withContext(Dispatchers.Main) { engineState = "端侧引擎：加载权重…" }
         val eng = AiChat.getInferenceEngine(ctx)
         eng.loadModel(file.absolutePath)
+        try {
+          eng.setSystemPrompt(ROUTER_SYS)
+        } catch (_: Exception) {
+        }
         withContext(Dispatchers.Main) {
           engine = eng
           engineState = "端侧引擎：就绪（免 Termux）"
@@ -102,6 +123,8 @@ internal fun ChatSection() {
     val q = raw.trim()
     if (q.isEmpty() || busy) return
     input = ""
+    pendingCmd = null
+    execNote = ""
     history = history + ChatMsg("user", q) + ChatMsg("assistant", "…")
     busy = true
     val eng = engine
@@ -128,6 +151,7 @@ internal fun ChatSection() {
         val final = stripThink(sb.toString()).trim().ifEmpty { "（空回复）" }
         withContext(Dispatchers.Main) {
           history = history.dropLast(1) + ChatMsg("assistant", final)
+          pendingCmd = extractCommand(final)
           busy = false
         }
       } else {
@@ -148,7 +172,7 @@ internal fun ChatSection() {
     Text(engineState, style = MaterialTheme.typography.bodySmall)
     Spacer(Modifier.height(8.dp))
     if (history.size <= 1 && !busy) {
-      SuggestionChips(onPick = { sendText(it) })
+      TaskChips(onPick = { sendText(it) })
       Spacer(Modifier.height(8.dp))
     }
     LazyColumn(
@@ -159,6 +183,25 @@ internal fun ChatSection() {
       items(history) { m -> ChatBubble(m) }
     }
     Spacer(Modifier.height(8.dp))
+    pendingCmd?.let { cmd ->
+      ApproveCard(
+        cmd = cmd,
+        note = execNote,
+        onApprove = {
+          val q = history.lastOrNull { it.role == "user" }?.text.orEmpty()
+          val done = executeTask(ctx, q, cmd)
+          execNote = done
+          history = history + ChatMsg("assistant", done)
+          pendingCmd = null
+        },
+        onReject = {
+          execNote = "已拒绝，不执行"
+          history = history + ChatMsg("assistant", "已拒绝，不执行")
+          pendingCmd = null
+        },
+      )
+      Spacer(Modifier.height(8.dp))
+    }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
       TextField(
         value = input,
@@ -175,6 +218,64 @@ internal fun ChatSection() {
       )
       Spacer(Modifier.width(8.dp))
       Button(onClick = { send() }, enabled = !busy) { Text("发送") }
+    }
+  }
+}
+
+@Composable
+private fun TaskChips(onPick: (String) -> Unit) {
+  val tasks =
+    listOf(
+      "打开网易云放一首歌" to "放首歌",
+      "帮我点一份外卖" to "点外卖",
+      "查一下特斯拉股价" to "查股价",
+    )
+  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    tasks.forEach { (prompt, label) ->
+      androidx.compose.material3.AssistChip(onClick = { onPick(prompt) }, label = { Text(label) })
+    }
+  }
+}
+
+/** 三类有意思活的执行器：音乐/外卖走应用拉起，股价走 LongBridge（需 Key 则明示）。 */
+private fun executeTask(ctx: android.content.Context, query: String, cmd: String): String {
+  val pm = ctx.packageManager
+  fun launch(pkg: String, label: String): String {
+    val intent = pm.getLaunchIntentForPackage(pkg) ?: return "没装${label}，装上再点批准"
+    ctx.startActivity(intent)
+    return "已执行：打开${label}"
+  }
+  return when {
+    query.contains("歌") || query.contains("网易云") || query.contains("播放") ->
+      launch("com.netease.cloudmusic", "网易云音乐")
+    query.contains("外卖") || query.contains("美团") -> launch("com.sankuai.meituan", "美团")
+    query.contains("股价") || query.contains("股票") ->
+      "已生成指令（$cmd）。LongBridge 实盘需先配 Key，演示版先带你开 App 看行情"
+    else -> "已批准：$cmd（演示版只执行放歌/外卖/股价三类）"
+  }
+}
+
+@Composable
+private fun ApproveCard(
+  cmd: String,
+  note: String,
+  onApprove: () -> Unit,
+  onReject: () -> Unit,
+) {
+  Surface(
+    shape = RoundedCornerShape(12.dp),
+    color = MaterialTheme.colorScheme.tertiaryContainer,
+    modifier = Modifier.fillMaxWidth(),
+  ) {
+    Column(Modifier.padding(12.dp)) {
+      Text("准备执行：", style = MaterialTheme.typography.labelMedium)
+      Text(cmd, style = MaterialTheme.typography.bodyMedium)
+      if (note.isNotEmpty()) Text(note, style = MaterialTheme.typography.bodySmall)
+      Spacer(Modifier.height(8.dp))
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = onApprove) { Text("批准执行") }
+        androidx.compose.material3.OutlinedButton(onClick = onReject) { Text("拒绝") }
+      }
     }
   }
 }
