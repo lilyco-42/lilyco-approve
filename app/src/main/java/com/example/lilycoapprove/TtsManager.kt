@@ -37,12 +37,13 @@ object TtsManager {
       fun f(name: String) = File(base, name).let { if (it.isFile) it.absolutePath else "" }
       val espeakDir = File(base, "espeak-ng-data").let { if (it.isDirectory) it.absolutePath else "" }
       // 中文 TN/多音字规则（官方 run-vits-zh-aishell3.sh 同款；缺失则传空=不用）
-      val ruleFsts =
+      // apply 内成员与局部变量同名会被局部 val 遮蔽（一律加 tn 前缀避开）
+      val tnFsts =
         listOf("phone.fst", "date.fst", "number.fst")
           .map { File(base, it) }
           .filter { it.isFile }
           .joinToString(",") { it.absolutePath }
-      val ruleFars = File(base, "rule.far").let { if (it.isFile) it.absolutePath else "" }
+      val tnFars = File(base, "rule.far").let { if (it.isFile) it.absolutePath else "" }
       // 官方 AAR 是 Kotlin data class：无 builder，用无参构造 + 属性赋值
       val vitsCfg =
         OfflineTtsVitsModelConfig().apply {
@@ -63,8 +64,8 @@ object TtsManager {
       val ttsCfg =
         OfflineTtsConfig().apply {
           model = modelCfg
-          ruleFsts = ruleFsts
-          ruleFars = ruleFars
+          ruleFsts = tnFsts
+          ruleFars = tnFars
         }
       // assetManager=null → 走 newFromFile（模型已铺到 filesDir，用绝对路径）
       tts = OfflineTts(assetManager = null, config = ttsCfg)
