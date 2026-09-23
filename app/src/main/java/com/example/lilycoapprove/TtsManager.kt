@@ -36,19 +36,25 @@ object TtsManager {
       val base = onnx.parentFile ?: return false
       fun f(name: String) = File(base, name).let { if (it.isFile) it.absolutePath else "" }
       val dataDir = File(base, "espeak-ng-data").let { if (it.isDirectory) it.absolutePath else "" }
-      val vits =
-        OfflineTtsVitsModelConfig.builder()
-          .setModel(onnx.absolutePath)
-          .setTokens(f("tokens.txt"))
-          .setLexicon(f("lexicon.txt"))
-          .setDataDir(dataDir)
-          .setNoiseScale(0.667f)
-          .setNoiseScaleW(0.8f)
-          .setLengthScale(1.0f)
-          .build()
-      val model = OfflineTtsModelConfig.builder().setVits(vits).setNumThreads(2).setDebug(false).build()
-      val config = OfflineTtsConfig.builder().setModel(model).build()
-      tts = OfflineTts(config)
+      // 官方 AAR 是 Kotlin data class：无 builder，用无参构造 + 属性赋值
+      val vitsCfg =
+        OfflineTtsVitsModelConfig().apply {
+          model = onnx.absolutePath
+          tokens = f("tokens.txt")
+          lexicon = f("lexicon.txt")
+          dataDir = dataDir
+          noiseScale = 0.667f
+          noiseScaleW = 0.8f
+          lengthScale = 1.0f
+        }
+      val modelCfg =
+        OfflineTtsModelConfig().apply {
+          vits = vitsCfg
+          numThreads = 2
+          debug = false
+        }
+      val ttsCfg = OfflineTtsConfig().apply { model = modelCfg }
+      tts = OfflineTts(ttsCfg)
       Log.i(TAG, "init ok: ${onnx.name}")
       true
     } catch (e: Exception) {
