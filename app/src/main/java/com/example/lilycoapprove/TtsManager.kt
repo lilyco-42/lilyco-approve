@@ -36,6 +36,13 @@ object TtsManager {
       val base = onnx.parentFile ?: return false
       fun f(name: String) = File(base, name).let { if (it.isFile) it.absolutePath else "" }
       val espeakDir = File(base, "espeak-ng-data").let { if (it.isDirectory) it.absolutePath else "" }
+      // 中文 TN/多音字规则（官方 run-vits-zh-aishell3.sh 同款；缺失则传空=不用）
+      val ruleFsts =
+        listOf("phone.fst", "date.fst", "number.fst")
+          .map { File(base, it) }
+          .filter { it.isFile }
+          .joinToString(",") { it.absolutePath }
+      val ruleFars = File(base, "rule.far").let { if (it.isFile) it.absolutePath else "" }
       // 官方 AAR 是 Kotlin data class：无 builder，用无参构造 + 属性赋值
       val vitsCfg =
         OfflineTtsVitsModelConfig().apply {
@@ -53,7 +60,12 @@ object TtsManager {
           numThreads = 2
           debug = false
         }
-      val ttsCfg = OfflineTtsConfig().apply { model = modelCfg }
+      val ttsCfg =
+        OfflineTtsConfig().apply {
+          model = modelCfg
+          ruleFsts = ruleFsts
+          ruleFars = ruleFars
+        }
       // assetManager=null → 走 newFromFile（模型已铺到 filesDir，用绝对路径）
       tts = OfflineTts(assetManager = null, config = ttsCfg)
       Log.i(TAG, "init ok: ${onnx.name}")
@@ -73,7 +85,8 @@ object TtsManager {
     stopTrack()
     genTask = exec.submit {
       try {
-        val audio = t.generate(s, 0, 1.0f)
+        // sid=33：官方 demo 用过的多说话人 id（10/33/99 均可）
+        val audio = t.generate(s, 33, 1.0f)
         val pcm = audio.samples
         if (pcm.isEmpty()) return@submit
         Log.i(TAG, "generated ${pcm.size} samples @ ${audio.sampleRate}Hz for ${s.length} chars")
