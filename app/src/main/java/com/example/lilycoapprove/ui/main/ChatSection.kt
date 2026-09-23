@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.arm.aichat.AiChat
 import com.arm.aichat.InferenceEngine
 import com.example.lilycoapprove.ModelSeed
+import com.example.lilycoapprove.TtsManager
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -170,6 +171,8 @@ internal fun ChatSection() {
   var input by remember { mutableStateOf("") }
   var busy by remember { mutableStateOf(false) }
   var engineState by remember { mutableStateOf("端侧引擎：加载中…") }
+  var ttsState by remember { mutableStateOf("语音：随引擎一起加载…") }
+  var voiceOn by remember { mutableStateOf(true) }
   var engine: InferenceEngine? by remember { mutableStateOf(null) }
   var pendingCmd by remember { mutableStateOf<String?>(null) }
   var execNote by remember { mutableStateOf("") }
@@ -209,6 +212,13 @@ internal fun ChatSection() {
           engine = eng
           engineState = "端侧引擎：就绪（免 Termux）"
           history = listOf(ChatMsg("assistant", "我准备好啦，直接说事就行。"))
+          ttsState = "语音：铺模型…"
+        }
+        // 语音：跟引擎同一后台流初始化，失败不影响聊天
+        val ttsOk = TtsManager.init(ctx.applicationContext)
+        withContext(Dispatchers.Main) {
+          ttsState = if (ttsOk) "语音：就绪（离线中文）" else "语音不可用"
+          if (ttsOk && voiceOn) TtsManager.speak("我准备好啦，直接说事就行。")
         }
       } catch (e: Exception) {
         withContext(Dispatchers.Main) {
@@ -254,12 +264,14 @@ internal fun ChatSection() {
           history = history.dropLast(1) + ChatMsg("assistant", final)
           pendingCmd = extractCommand(final)
           busy = false
+          if (voiceOn && final != "（空回复）") TtsManager.speak(final)
         }
       } else {
         val reply = postChat(history.dropLast(1).filter { it.text != "…" })
         withContext(Dispatchers.Main) {
           history = history.dropLast(1) + ChatMsg("assistant", reply)
           busy = false
+          if (voiceOn && reply != "（空回复）") TtsManager.speak(reply)
         }
       }
       Unit
@@ -271,6 +283,7 @@ internal fun ChatSection() {
   Column(Modifier.fillMaxWidth()) {
     Text("对话（本机离线）", style = MaterialTheme.typography.titleMedium)
     Text(engineState, style = MaterialTheme.typography.bodySmall)
+    Text(ttsState, style = MaterialTheme.typography.bodySmall)
     Spacer(Modifier.height(8.dp))
     if (history.size <= 1 && !busy) {
       TaskChips(onPick = { sendText(it) })
@@ -337,6 +350,11 @@ internal fun ChatSection() {
             unfocusedIndicatorColor = Color.Transparent,
           ),
       )
+      Spacer(Modifier.width(8.dp))
+      Button(onClick = {
+        voiceOn = !voiceOn
+        if (!voiceOn) TtsManager.stop()
+      }) { Text(if (voiceOn) "🔊" else "🔇") }
       Spacer(Modifier.width(8.dp))
       Button(onClick = { send() }, enabled = !busy) { Text("发送") }
     }

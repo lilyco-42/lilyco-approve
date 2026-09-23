@@ -90,4 +90,6 @@ dependencies {
 
   // 端侧推理：llama.cpp JNI（免 Termux，装机即聊）
   implementation(project(":aichat"))
+  // 端侧中文 TTS：sherpa-onnx AAR（CI 拉取，不进 git，见 app/.gitignore）
+  implementation(files("libs/sherpa-onnx-1.13.8.aar"))
 }

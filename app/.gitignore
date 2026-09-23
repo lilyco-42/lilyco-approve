@@ -1,3 +1,6 @@
 /build
 # 模型走 release/OSS 分发，不进 git（400MB+）
 /src/main/assets/models/
+# TTS 引擎 AAR + 语音模型走 CI 分发，不进 git
+/libs/
+/src/main/assets/tts/
