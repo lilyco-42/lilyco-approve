@@ -35,14 +35,14 @@ object TtsManager {
         ?: return false.also { Log.w(TAG, "no onnx under $dir") }
       val base = onnx.parentFile ?: return false
       fun f(name: String) = File(base, name).let { if (it.isFile) it.absolutePath else "" }
-      val dataDir = File(base, "espeak-ng-data").let { if (it.isDirectory) it.absolutePath else "" }
+      val espeakDir = File(base, "espeak-ng-data").let { if (it.isDirectory) it.absolutePath else "" }
       // 官方 AAR 是 Kotlin data class：无 builder，用无参构造 + 属性赋值
       val vitsCfg =
         OfflineTtsVitsModelConfig().apply {
           model = onnx.absolutePath
           tokens = f("tokens.txt")
           lexicon = f("lexicon.txt")
-          dataDir = dataDir
+          dataDir = espeakDir
           noiseScale = 0.667f
           noiseScaleW = 0.8f
           lengthScale = 1.0f
@@ -54,7 +54,8 @@ object TtsManager {
           debug = false
         }
       val ttsCfg = OfflineTtsConfig().apply { model = modelCfg }
-      tts = OfflineTts(ttsCfg)
+      // assetManager=null → 走 newFromFile（模型已铺到 filesDir，用绝对路径）
+      tts = OfflineTts(assetManager = null, config = ttsCfg)
       Log.i(TAG, "init ok: ${onnx.name}")
       true
     } catch (e: Exception) {
